@@ -22,19 +22,51 @@ const { hashPassword, verifyPassword } = require('../../shared/security/password
 const { hashToken } = require('../../shared/security/tokens');
 const { requireUser } = require('../../shared/auth/requireUser');
 const { issueSessionTokens, serializeUser } = require('./_helpers');
+const {
+  detectIdentifierType,
+  isValidUsernameShape,
+  isValidEmailShape,
+  USERNAME_MIN,
+  USERNAME_MAX
+} = require('../../shared/auth/signInIdentifier');
+
+const MIN_PASSWORD_LEN = 8;
+
+function normalizeUsername(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase();
+}
 
 const authQueries = {};
 
 const authMutations = {
   signUp: async (_, { input }, context) => {
     const email = input.email.trim().toLowerCase();
+    const usernameNorm = normalizeUsername(input.username);
 
-    const existing = await context.models.User.findOne({
-      where: { email }
-    });
+    if (input.password.length < MIN_PASSWORD_LEN) {
+      throw new Error(`Password must be at least ${MIN_PASSWORD_LEN} characters`);
+    }
+    if (usernameNorm.includes('@')) {
+      throw new Error(`Username cannot contain @ (use 3–${USERNAME_MAX} chars: letters, digits, _ -)`);
+    }
+    if (!isValidUsernameShape(usernameNorm)) {
+      throw new Error(
+        `Username must be ${USERNAME_MIN}–${USERNAME_MAX} characters (letters, digits, underscore, hyphen only)`
+      );
+    }
 
-    if (existing) {
+    const existingEmail = await context.models.User.findOne({ where: { email } });
+    if (existingEmail) {
       throw new Error('Email is already registered');
+    }
+
+    const existingUsername = await context.models.User.findOne({
+      where: { username: usernameNorm }
+    });
+    if (existingUsername) {
+      throw new Error('Username is already taken');
     }
 
     const tx = await context.models.User.sequelize.transaction();
@@ -44,7 +76,7 @@ const authMutations = {
         {
           user_id: randomUUID(),
           email,
-          username: input.username?.trim() || null,
+          username: usernameNorm,
           timezone: input.timezone
         },
         { transaction: tx }
@@ -89,14 +121,35 @@ const authMutations = {
   },
 
   signIn: async (_, { input }, context) => {
-    const email = input.email.trim().toLowerCase();
+    const raw = String(input.emailOrUsername || '').trim();
+    if (!raw) {
+      throw new Error('Invalid credentials');
+    }
 
-    const identity = await context.models.AuthIdentity.findOne({
-      where: {
-        provider: 'email_password',
-        provider_subject: email
+    let identity;
+    if (detectIdentifierType(raw) === 'email') {
+      if (!isValidEmailShape(raw)) {
+        throw new Error('Invalid credentials');
       }
-    });
+      const email = raw.toLowerCase();
+      identity = await context.models.AuthIdentity.findOne({
+        where: { provider: 'email_password', provider_subject: email }
+      });
+    } else {
+      const usernameNorm = raw.toLowerCase();
+      if (!isValidUsernameShape(usernameNorm)) {
+        throw new Error('Invalid credentials');
+      }
+      const user = await context.models.User.findOne({
+        where: { username: usernameNorm }
+      });
+      if (!user) {
+        throw new Error('Invalid credentials');
+      }
+      identity = await context.models.AuthIdentity.findOne({
+        where: { user_id: user.user_id, provider: 'email_password' }
+      });
+    }
 
     if (!identity || !identity.password_hash || !verifyPassword(input.password, identity.password_hash)) {
       throw new Error('Invalid credentials');
@@ -104,7 +157,7 @@ const authMutations = {
 
     const user = await context.models.User.findByPk(identity.user_id);
     if (!user || !user.is_active) {
-      throw new Error('User not available');
+      throw new Error('Invalid credentials');
     }
 
     await user.update({
@@ -200,7 +253,26 @@ const authMutations = {
     }
 
     const updates = {};
-    if (input.username !== undefined) updates.username = input.username?.trim() || null;
+    if (input.username !== undefined) {
+      const u = normalizeUsername(input.username);
+      if (!u) {
+        throw new Error(
+          `Username must be ${USERNAME_MIN}–${USERNAME_MAX} characters (letters, digits, underscore, hyphen only)`
+        );
+      }
+      if (u.includes('@') || !isValidUsernameShape(u)) {
+        throw new Error(
+          `Username must be ${USERNAME_MIN}–${USERNAME_MAX} characters (letters, digits, underscore, hyphen only)`
+        );
+      }
+      const taken = await context.models.User.findOne({
+        where: { username: u }
+      });
+      if (taken && taken.user_id !== user.userId) {
+        throw new Error('Username is already taken');
+      }
+      updates.username = u;
+    }
     if (input.timezone !== undefined) updates.timezone = input.timezone;
 
     if (Object.keys(updates).length > 0) {

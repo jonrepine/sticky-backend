@@ -105,7 +105,8 @@ describe('signUp', () => {
         input: {
           email: 'dupe@test.com',
           password: 'Password123',
-          timezone: 'UTC'
+          timezone: 'UTC',
+          username: 'dupe_user_one'
         }
       }
     );
@@ -119,7 +120,8 @@ describe('signUp', () => {
         input: {
           email: 'dupe@test.com',
           password: 'Password123',
-          timezone: 'UTC'
+          timezone: 'UTC',
+          username: 'dupe_user_two'
         }
       }
     );
@@ -137,7 +139,8 @@ describe('signUp', () => {
         input: {
           email: 'shortpw@test.com',
           password: 'short',
-          timezone: 'UTC'
+          timezone: 'UTC',
+          username: 'shortpw_user'
         }
       }
     );
@@ -156,7 +159,8 @@ describe('signUp', () => {
         input: {
           email: 'UPPER@Test.COM',
           password: 'Password123',
-          timezone: 'UTC'
+          timezone: 'UTC',
+          username: 'upper_user'
         }
       }
     );
@@ -165,24 +169,46 @@ describe('signUp', () => {
     expect(result.data.signUp.user.email).toBe('upper@test.com');
   });
 
-  it('works without optional username', async () => {
-    const result = await gql(
-      `mutation ($input: SignUpInput!) {
-        signUp(input: $input) {
-          user { userId email username }
-        }
-      }`,
+  it('rejects duplicate username', async () => {
+    await gql(
+      `mutation ($input: SignUpInput!) { signUp(input: $input) { accessToken } }`,
       {
         input: {
-          email: 'nousername@test.com',
+          email: 'sameuser1@test.com',
           password: 'Password123',
-          timezone: 'UTC'
+          timezone: 'UTC',
+          username: 'unique_slug_xyz'
         }
       }
     );
+    const result = await gql(
+      `mutation ($input: SignUpInput!) { signUp(input: $input) { accessToken } }`,
+      {
+        input: {
+          email: 'sameuser2@test.com',
+          password: 'Password123',
+          timezone: 'UTC',
+          username: 'unique_slug_xyz'
+        }
+      }
+    );
+    expect(result.errors).toBeDefined();
+    expect(result.errors[0].message).toMatch(/username.*taken/i);
+  });
 
-    expect(result.errors).toBeUndefined();
-    expect(result.data.signUp.user.username).toBeNull();
+  it('rejects invalid username (too short)', async () => {
+    const result = await gql(
+      `mutation ($input: SignUpInput!) { signUp(input: $input) { accessToken } }`,
+      {
+        input: {
+          email: 'badname@test.com',
+          password: 'Password123',
+          timezone: 'UTC',
+          username: 'ab'
+        }
+      }
+    );
+    expect(result.errors).toBeDefined();
   });
 
   it('creates session and activity event in DB', async () => {
@@ -196,7 +222,8 @@ describe('signUp', () => {
         input: {
           email: 'dbcheck-signup@test.com',
           password: 'Password123',
-          timezone: 'UTC'
+          timezone: 'UTC',
+          username: 'dbcheck_user'
         }
       }
     );
@@ -229,7 +256,8 @@ describe('signIn', () => {
         input: {
           email: 'signin@test.com',
           password: 'Password123',
-          timezone: 'UTC'
+          timezone: 'UTC',
+          username: 'signin_tester'
         }
       }
     );
@@ -246,7 +274,7 @@ describe('signIn', () => {
       }`,
       {
         input: {
-          email: 'signin@test.com',
+          emailOrUsername: 'signin@test.com',
           password: 'Password123'
         }
       }
@@ -264,7 +292,7 @@ describe('signIn', () => {
       }`,
       {
         input: {
-          email: 'signin@test.com',
+          emailOrUsername: 'signin@test.com',
           password: 'WrongPassword99'
         }
       }
@@ -281,7 +309,7 @@ describe('signIn', () => {
       }`,
       {
         input: {
-          email: 'nobody@test.com',
+          emailOrUsername: 'nobody@test.com',
           password: 'Password123'
         }
       }
@@ -300,7 +328,7 @@ describe('signIn', () => {
       }`,
       {
         input: {
-          email: 'SIGNIN@TEST.COM',
+          emailOrUsername: 'SIGNIN@TEST.COM',
           password: 'Password123'
         }
       }
@@ -319,7 +347,7 @@ describe('signIn', () => {
       }`,
       {
         input: {
-          email: 'signin@test.com',
+          emailOrUsername: 'signin@test.com',
           password: 'Password123',
           deviceName: 'iPhone 15 Pro'
         }
@@ -328,6 +356,51 @@ describe('signIn', () => {
 
     expect(result.errors).toBeUndefined();
     expect(result.data.signIn.accessToken).toBeTruthy();
+  });
+
+  it('returns tokens when signing in with username', async () => {
+    const result = await gql(
+      `mutation ($input: SignInInput!) {
+        signIn(input: $input) { accessToken user { email username } }
+      }`,
+      {
+        input: {
+          emailOrUsername: 'signin_tester',
+          password: 'Password123'
+        }
+      }
+    );
+    expect(result.errors).toBeUndefined();
+    expect(result.data.signIn.user.email).toBe('signin@test.com');
+    expect(result.data.signIn.user.username).toBe('signin_tester');
+  });
+
+  it('signIn case-insensitive on username', async () => {
+    const result = await gql(
+      `mutation ($input: SignInInput!) { signIn(input: $input) { user { email } } }`,
+      {
+        input: {
+          emailOrUsername: 'SIGNIN_TESTER',
+          password: 'Password123'
+        }
+      }
+    );
+    expect(result.errors).toBeUndefined();
+    expect(result.data.signIn.user.email).toBe('signin@test.com');
+  });
+
+  it('rejects malformed email (john@) with generic error', async () => {
+    const result = await gql(
+      `mutation ($input: SignInInput!) { signIn(input: $input) { accessToken } }`,
+      {
+        input: {
+          emailOrUsername: 'john@',
+          password: 'Password123'
+        }
+      }
+    );
+    expect(result.errors).toBeDefined();
+    expect(result.errors[0].message).toMatch(/invalid credentials/i);
   });
 });
 
@@ -358,7 +431,7 @@ describe('signOutAllSessions', () => {
     await createTestUser({ email });
     const { accessToken } = await gql(
       `mutation ($input: SignInInput!) { signIn(input: $input) { accessToken } }`,
-      { input: { email, password: 'Password123' } }
+      { input: { emailOrUsername: email, password: 'Password123' } }
     ).then(r => r.data.signIn);
 
     const result = await gqlAuth(accessToken, `mutation { signOutAllSessions }`);

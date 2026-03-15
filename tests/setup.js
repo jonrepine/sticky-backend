@@ -126,6 +126,9 @@ async function gqlAuth(token, query, variables = {}) {
  */
 async function createTestUser(overrides = {}) {
   const email = overrides.email || `test-${Date.now()}@example.com`;
+  const username =
+    overrides.username ||
+    `u${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 30);
   const result = await gql(
     `mutation ($input: SignUpInput!) {
       signUp(input: $input) {
@@ -139,7 +142,7 @@ async function createTestUser(overrides = {}) {
         email,
         password: overrides.password || 'Password123',
         timezone: overrides.timezone || 'America/New_York',
-        username: overrides.username || null
+        username
       }
     }
   );

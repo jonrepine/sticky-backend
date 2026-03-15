@@ -93,11 +93,11 @@ const typeDefs = `#graphql
     email: String!
     password: String!
     timezone: String!
-    username: String
+    username: String!
   }
 
   input SignInInput {
-    email: String!
+    emailOrUsername: String!
     password: String!
     deviceName: String
   }
