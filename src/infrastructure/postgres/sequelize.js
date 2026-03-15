@@ -5,7 +5,12 @@ const { initModels } = require('./models');
 
 const sequelize = new Sequelize(config.postgresUrl, {
   dialect: 'postgres',
-  logging: config.env === 'development' ? console.log : false
+  logging: config.env === 'development' ? console.log : false,
+  ...(config.env === 'production' && {
+    dialectOptions: {
+      ssl: { require: true, rejectUnauthorized: false }
+    }
+  })
 });
 
 const models = initModels(sequelize);
