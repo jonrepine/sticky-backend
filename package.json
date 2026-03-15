@@ -1,0 +1,31 @@
+{
+  "name": "spaced-rep-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spaced repetition backend API (Apollo GraphQL + PostgreSQL + MongoDB)",
+  "main": "src/app/server.js",
+  "scripts": {
+    "dev": "node --watch src/app/server.js",
+    "start": "node src/app/server.js",
+    "check": "node --check src/app/server.js",
+    "test": "jest --runInBand --forceExit --detectOpenHandles"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.11.2",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "graphql": "^16.9.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.15.0",
+    "pg": "^8.12.0",
+    "sequelize": "^6.37.3",
+    "ts-fsrs": "^5.2.3"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
+  }
+}
